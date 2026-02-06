@@ -1,2 +1,5 @@
 # gesture-controlled-math-visualization
 Interactive mathematical visualisation using particles and hand gestures (Three.js + MediaPipe).
+This project is an attempt to explore how mathematical concepts can be visualised interactively using modern technology. It demonstrates particle-based representations of different mathematical shapes, such as a heart, flower, planetary system, and radial patterns, all generated through mathematical equations and coordinate systems.
+
+The project also integrates basic computer vision to allow real-time hand gesture interaction, where simple gestures control scaling, rotation, and colour variation of the visualisation. The objective of this work is to connect abstract mathematics with visual intuition and to understand how emerging digital tools can enhance learning and conceptual clarity. This project reflects my interest in applying mathematics beyond textbooks and my intention to further develop my technical skills after completing my board examinations.
