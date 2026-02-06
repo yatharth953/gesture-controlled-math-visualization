@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Particle Playground</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        #video-container { position: absolute; bottom: 20px; right: 20px; width: 200px; border: 2px solid #555; border-radius: 8px; overflow: hidden; transform: scaleX(-1); }
+        video { width: 100%; display: block; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; pointer-events: auto; }
+        button { background: #444; color: white; border: none; padding: 8px 12px; margin: 5px; cursor: pointer; border-radius: 4px; transition: 0.3s; }
+        button:hover { background: #666; }
+        .active { background: #007bff; }
+        .hint { font-size: 12px; color: #aaa; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="ui">
+        <h3>✨ Particle Templates</h3>
+        <button onclick="setTemplate('heart')" id="btn-heart">Heart</button>
+        <button onclick="setTemplate('flower')" id="btn-flower">Flower</button>
+        <button onclick="setTemplate('saturn')" id="btn-saturn">Saturn</button>
+        <button onclick="setTemplate('fireworks')" id="btn-fireworks">Fireworks</button>
+        <div class="hint">
+            <b>Gestures:</b><br>
+            • Pinch/Spread fingers to expand/contract<br>
+            • Move hand left/right to change Color Hue<br>
+            • Move hand up/down to rotate
+        </div>
+    </div>
+    <div id="video-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+    // --- Configuration ---
+    const PARTICLE_COUNT = 5000;
+    let currentTemplate = 'heart';
+    let handLandmarker;
+    let webcamRunning = false;
+    let targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+    let currentPositions = new Float32Array(PARTICLE_COUNT * 3);
+    let velocities = new Float32Array(PARTICLE_COUNT * 3);
+    let colors = new Float32Array(PARTICLE_COUNT * 3);
+
+    // --- Three.js Setup ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('container').appendChild(renderer.domElement);
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const material = new THREE.PointsMaterial({
+        size: 0.05,
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+    camera.position.z = 5;
+
+    // --- Templates Logic ---
+    function updateTemplate() {
+        const temp = new THREE.Vector3();
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const i3 = i * 3;
+            if (currentTemplate === 'heart') {
+                const t = Math.random() * Math.PI * 2;
+                temp.x = 16 * Math.pow(Math.sin(t), 3);
+                temp.y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+                temp.z = (Math.random() - 0.5) * 5;
+                temp.multiplyScalar(0.1);
+            } else if (currentTemplate === 'flower') {
+                const t = Math.random() * Math.PI * 2;
+                const r = 2 * Math.cos(5 * t); // 5 petals
+                temp.x = r * Math.cos(t) * 1.5;
+                temp.y = r * Math.sin(t) * 1.5;
+                temp.z = (Math.random() - 0.5) * 2;
+            } else if (currentTemplate === 'saturn') {
+                if (i < PARTICLE_COUNT * 0.4) { // Sphere
+                    const u = Math.random();
+                    const v = Math.random();
+                    const theta = 2 * Math.PI * u;
+                    const phi = Math.acos(2 * v - 1);
+                    temp.x = Math.sin(phi) * Math.cos(theta);
+                    temp.y = Math.sin(phi) * Math.sin(theta);
+                    temp.z = Math.cos(phi);
+                } else { // Ring
+                    const r = 2.5 + Math.random() * 0.8;
+                    const theta = Math.random() * Math.PI * 2;
+                    temp.x = r * Math.cos(theta);
+                    temp.y = (Math.random() - 0.5) * 0.1;
+                    temp.z = r * Math.sin(theta);
+                }
+            } else if (currentTemplate === 'fireworks') {
+                const r = Math.random() * 4;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI;
+                temp.x = r * Math.sin(phi) * Math.cos(theta);
+                temp.y = r * Math.sin(phi) * Math.sin(theta);
+                temp.z = r * Math.cos(phi);
+            }
+            targetPositions[i3] = temp.x;
+            targetPositions[i3 + 1] = temp.y;
+            targetPositions[i3 + 2] = temp.z;
+        }
+    }
+
+    window.setTemplate = (t) => {
+        currentTemplate = t;
+        document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        document.getElementById(`btn-${t}`).classList.add('active');
+        updateTemplate();
+    };
+
+    // --- MediaPipe Hand Tracking ---
+    async function initHandTracking() {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            numHands: 1
+        });
+        startWebcam();
+    }
+
+    async function startWebcam() {
+        const video = document.getElementById("webcam");
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        video.addEventListener("loadeddata", () => {
+            webcamRunning = true;
+            animate();
+        });
+    }
+
+    // --- Interaction Logic ---
+    let handX = 0, handY = 0, handZ = 0, pinchDist = 1;
+    let targetHue = 0.5;
+
+    function processHandResults(results) {
+        if (results.landmarks && results.landmarks.length > 0) {
+            const landmarks = results.landmarks[0];
+            // Get Wrist (0) and Index Tip (8) + Thumb Tip (4)
+            const wrist = landmarks[0];
+            const thumb = landmarks[4];
+            const index = landmarks[8];
+
+            // Normalize coordinates (-1 to 1)
+            handX = (wrist.x - 0.5) * 10;
+            handY = (0.5 - wrist.y) * 10;
+            
+            // Pinch distance for expansion
+            const dx = thumb.x - index.x;
+            const dy = thumb.y - index.y;
+            pinchDist = Math.sqrt(dx*dx + dy*dy) * 10;
+
+            // Hand X position maps to Color Hue
+            targetHue = wrist.x;
+        }
+    }
+
+    // --- Main Loop ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+        const delta = clock.getDelta();
+        const video = document.getElementById("webcam");
+        
+        if (webcamRunning) {
+            const startTimeMs = performance.now();
+            const results = handLandmarker.detectForVideo(video, startTimeMs);
+            processHandResults(results);
+        }
+
+        const posAttr = geometry.attributes.position;
+        const colAttr = geometry.attributes.color;
+        const colorObj = new THREE.Color();
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const i3 = i * 3;
+            
+            // Morph towards target position
+            const tx = targetPositions[i3] * pinchDist;
+            const ty = targetPositions[i3+1] * pinchDist;
+            const tz = targetPositions[i3+2] * pinchDist;
+
+            currentPositions[i3] += (tx - currentPositions[i3]) * 0.1;
+            currentPositions[i3+1] += (ty - currentPositions[i3+1]) * 0.1;
+            currentPositions[i3+2] += (tz - currentPositions[i3+2]) * 0.1;
+
+            // Update Colors
+            colorObj.setHSL((targetHue + i/PARTICLE_COUNT) % 1, 0.8, 0.6);
+            colors[i3] = colorObj.r;
+            colors[i3+1] = colorObj.g;
+            colors[i3+2] = colorObj.b;
+        }
+
+        points.rotation.y += 0.01 + (handX * 0.01);
+        points.rotation.x += handY * 0.01;
+        
+        posAttr.needsUpdate = true;
+        colAttr.needsUpdate = true;
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    initHandTracking();
+    updateTemplate();
+    document.getElementById('btn-heart').classList.add('active');
+</script>
+</body>
+</html>
